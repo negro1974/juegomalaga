@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Shoot 'Em Up Retro</title>
+  
+  <!-- Bootstrap CSS -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+  <!-- FontAwesome -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+  <!-- Fuente retro -->
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap">
+  
+  <style>
+    /* Estilos globales */
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: #000;
+      color: #fff;
+      font-family: 'Press Start 2P', cursive, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+    }
+    h1 {
+      text-align: center;
+      margin: 20px 0;
+      font-size: 1.2rem;
+    }
+    /* Contenedor responsivo para el canvas */
+    #game-container {
+      width: 100%;
+      max-width: 400px;
+      position: relative;
+    }
+    /* El canvas se adapta al contenedor manteniendo su proporción */
+    canvas {
+      width: 100%;
+      height: auto;
+      background: #222;
+      border: 2px solid #555;
+      display: block;
+    }
+    /* Mensaje GAME OVER y botón de reinicio */
+    #gameOver {
+      position: absolute;
+      top: 40%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 2rem;
+      color: red;
+      display: none;
+      z-index: 10;
+    }
+    #restartBtn {
+      position: absolute;
+      top: 55%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      display: none;
+      z-index: 10;
+    }
+  </style>
+</head>
+<body>
+  <h1>Shoot 'Em Up Retro</h1>
+  <div id="game-container">
+    <canvas id="gameCanvas" width="400" height="500"></canvas>
+    <div id="gameOver">GAME OVER</div>
+    <button id="restartBtn" class="btn btn-danger">
+      <i class="fa-solid fa-rotate-right"></i> Reiniciar
+    </button>
+  </div>
+  
+  <script>
+    'use strict';
+    
+    // Configuración base del canvas (dimensiones internas)
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const baseWidth = 400;
+    const baseHeight = 500;
+    
+    // Variables de estado del juego
+    let gameOver = false;
+    let score = 0;
+    let keys = {};
+    
+    // Objeto jugador
+    const player = {
+      x: baseWidth / 2 - 15,
+      y: baseHeight - 40,
+      width: 30,
+      height: 30,
+      speed: 5,
+      image: new Image()
+    };
+    // Fuente de la imagen del jugador (se usará un rectángulo azul si no carga)
+    player.image.src = 'https://i.imgur.com/6v0L7C5.png';
+    
+    // Array para balas
+    let bullets = [];
+    const bulletSpeed = 7;
+    const bulletWidth = 4;
+    const bulletHeight = 10;
+    
+    // Configuración de los enemigos
+    let enemies = [];
+    const enemyRows = 3;
+    const enemyCols = 5;
+    const enemyWidth = 30;
+    const enemyHeight = 30;
+    let enemySpeed = 1;
+    let enemyDirection = 1; // 1: derecha, -1: izquierda
+    const enemyDescend = 20;
+    
+    // Imagen de los enemigos (fallback: rectángulo rojo)
+    const enemyImage = new Image();
+    enemyImage.src = 'https://i.imgur.com/w8Wbqha.png';
+    
+    // Función para crear la formación de enemigos
+    function createEnemies() {
+      enemies = [];
+      const offsetX = 30, offsetY = 20, paddingX = 30, paddingY = 30;
+      for (let row = 0; row < enemyRows; row++) {
+        for (let col = 0; col < enemyCols; col++) {
+          enemies.push({
+            x: offsetX + col * (enemyWidth + paddingX),
+            y: offsetY + row * (enemyHeight + paddingY),
+            width: enemyWidth,
+            height: enemyHeight,
+            alive: true
+          });
+        }
+      }
+    }
+    createEnemies();
+    
+    // Función para dibujar el jugador
+    function drawPlayer() {
+      if (player.image.complete) {
+        ctx.drawImage(player.image, player.x, player.y, player.width, player.height);
+      } else {
+        ctx.fillStyle = 'blue';
+        ctx.fillRect(player.x, player.y, player.width, player.height);
+      }
+    }
+    
+    // Dibujar las balas
+    function drawBullets() {
+      ctx.fillStyle = 'yellow';
+      bullets.forEach(bullet => {
+        ctx.fillRect(bullet.x, bullet.y, bullet.width, bullet.height);
+      });
+    }
+    
+    // Dibujar los enemigos
+    function drawEnemies() {
+      enemies.forEach(enemy => {
+        if (enemy.alive) {
+          if (enemyImage.complete) {
+            ctx.drawImage(enemyImage, enemy.x, enemy.y, enemy.width, enemy.height);
+          } else {
+            ctx.fillStyle = 'red';
+            ctx.fillRect(enemy.x, enemy.y, enemy.width, enemy.height);
+          }
+        }
+      });
+    }
+    
+    // Manejo de eventos de teclado
+    document.addEventListener('keydown', (e) => {
+      keys[e.code] = true;
+      if (e.code === 'Space') shoot();
+    });
+    document.addEventListener('keyup', (e) => {
+      keys[e.code] = false;
+    });
+    
+    // Función para disparar
+    function shoot() {
+      if (!gameOver) {
+        bullets.push({
+          x: player.x + player.width / 2 - bulletWidth / 2,
+          y: player.y,
+          width: bulletWidth,
+          height: bulletHeight
+        });
+        // Efecto de sonido retro desde CDN
+        let shootSound = new Audio('https://actions.google.com/sounds/v1/cartoon/clang_and_wobble.ogg');
+        shootSound.volume = 0.5;
+        shootSound.play();
+      }
+    }
+    
+    // Función de actualización del juego
+    function update() {
+      if (gameOver) return;
+      
+      // Movimiento del jugador
+      if (keys['ArrowLeft'] || keys['KeyA']) player.x -= player.speed;
+      if (keys['ArrowRight'] || keys['KeyD']) player.x += player.speed;
+      if (keys['ArrowUp'] || keys['KeyW']) player.y -= player.speed;
+      if (keys['ArrowDown'] || keys['KeyS']) player.y += player.speed;
+      // Límites para el jugador
+      if (player.x < 0) player.x = 0;
+      if (player.x + player.width > baseWidth) player.x = baseWidth - player.width;
+      if (player.y < 0) player.y = 0;
+      if (player.y + player.height > baseHeight) player.y = baseHeight - player.height;
+      
+      // Actualizar posición de las balas
+      for (let i = 0; i < bullets.length; i++) {
+        bullets[i].y -= bulletSpeed;
+        if (bullets[i].y < 0) {
+          bullets.splice(i, 1);
+          i--;
+        }
+      }
+      
+      // Movimiento dinámico de los enemigos
+      let needToDescend = false;
+      for (let enemy of enemies) {
+        if (!enemy.alive) continue;
+        enemy.x += enemySpeed * enemyDirection;
+        if (enemy.x <= 0 || enemy.x + enemy.width >= baseWidth) {
+          needToDescend = true;
+        }
+      }
+      if (needToDescend) {
+        enemyDirection *= -1;
+        for (let enemy of enemies) {
+          if (enemy.alive) enemy.y += enemyDescend;
+        }
+      }
+      
+      // Comprobar colisiones entre balas y enemigos
+      for (let i = 0; i < bullets.length; i++) {
+        for (let j = 0; j < enemies.length; j++) {
+          let bullet = bullets[i];
+          let enemy = enemies[j];
+          if (enemy.alive &&
+              bullet.x < enemy.x + enemy.width &&
+              bullet.x + bullet.width > enemy.x &&
+              bullet.y < enemy.y + enemy.height &&
+              bullet.y + bullet.height > enemy.y) {
+                enemy.alive = false;
+                bullets.splice(i, 1);
+                score += 10;
+                i--;
+                break;
+          }
+        }
+      }
+      
+      // Fin del juego: si algún enemigo alcanza la zona del jugador
+      for (let enemy of enemies) {
+        if (enemy.alive && enemy.y + enemy.height >= player.y) {
+          gameOver = true;
+          document.getElementById('gameOver').style.display = 'block';
+          document.getElementById('restartBtn').style.display = 'block';
+          break;
+        }
+      }
+    }
+    
+    // Función para dibujar el juego
+    function draw() {
+      // Limpiar canvas con fondo oscuro
+      ctx.fillStyle = "#222";
+      ctx.fillRect(0, 0, baseWidth, baseHeight);
+      drawPlayer();
+      drawBullets();
+      drawEnemies();
+      // Mostrar puntuación
+      ctx.fillStyle = "#fff";
+      ctx.font = "16px Arial";
+      ctx.fillText("Score: " + score, 10, 20);
+    }
+    
+    // Bucle principal del juego
+    function gameLoop() {
+      update();
+      draw();
+      if (!gameOver) {
+        requestAnimationFrame(gameLoop);
+      }
+    }
+    gameLoop();
+    
+    // Reiniciar juego al pulsar el botón
+    document.getElementById('restartBtn').addEventListener('click', () => {
+      gameOver = false;
+      score = 0;
+      player.x = baseWidth / 2 - player.width / 2;
+      player.y = baseHeight - player.height - 10;
+      bullets = [];
+      createEnemies();
+      document.getElementById('gameOver').style.display = 'none';
+      document.getElementById('restartBtn').style.display = 'none';
+      gameLoop();
+    });
+  </script>
+  
+  <!-- Bootstrap JS Bundle -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
